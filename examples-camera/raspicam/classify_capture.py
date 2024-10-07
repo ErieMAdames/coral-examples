@@ -12,18 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""A demo to classify Raspberry Pi camera stream."""
+"""A demo to classify Raspberry Pi camera stream using picamera2."""
 import argparse
 import collections
 from collections import deque
 import common
-import io
 import numpy as np
 import operator
 import os
-import picamera
 import tflite_runtime.interpreter as tflite
 import time
+from picamera2 import Picamera2
 
 Category = collections.namedtuple('Category', ['id', 'score'])
 
@@ -55,37 +54,47 @@ def main():
     interpreter = common.make_interpreter(args.model)
     interpreter.allocate_tensors()
 
-    with picamera.PiCamera() as camera:
-        camera.resolution = (640, 480)
-        camera.framerate = 30
-        camera.annotate_text_size = 20
-        width, height, channels = common.input_image_size(interpreter)
-        camera.start_preview()
-        try:
-            stream = io.BytesIO()
-            fps = deque(maxlen=20)
-            fps.append(time.time())
-            for foo in camera.capture_continuous(stream,
-                                                 format='rgb',
-                                                 use_video_port=True,
-                                                 resize=(width, height)):
-                stream.truncate()
-                stream.seek(0)
-                input = np.frombuffer(stream.getvalue(), dtype=np.uint8)
-                start_ms = time.time()
-                common.input_tensor(interpreter)[:,:] = np.reshape(input, common.input_image_size(interpreter))
-                interpreter.invoke()
-                results = get_output(interpreter, top_k=3, score_threshold=0)
-                inference_ms = (time.time() - start_ms)*1000.0
-                fps.append(time.time())
-                fps_ms = len(fps)/(fps[-1] - fps[0])
-                camera.annotate_text = 'Inference: {:5.2f}ms FPS: {:3.1f}'.format(inference_ms, fps_ms)
-                for result in results:
-                   camera.annotate_text += '\n{:.0f}% {}'.format(100*result[1], labels[result[0]])
-                print(camera.annotate_text)
-        finally:
-            camera.stop_preview()
+    picam2 = Picamera2()
+    # Set the configuration for camera preview at 640x480 resolution
+    config = picam2.create_preview_configuration(main={"format": "RGB888", "size": (640, 480)})
+    picam2.configure(config)
 
+    width, height, _ = common.input_image_size(interpreter)
+
+    picam2.start()
+
+    try:
+        fps = deque(maxlen=20)
+        fps.append(time.time())
+
+        while True:
+            start_time = time.time()
+
+            # Capture image from camera
+            image = picam2.capture_array()
+
+            # Resize and preprocess the image for the model
+            resized_image = cv2.resize(image, (width, height))
+            input_tensor = np.asarray(resized_image, dtype=np.uint8)
+            common.input_tensor(interpreter)[:,:] = input_tensor
+
+            # Run inference
+            start_ms = time.time()
+            interpreter.invoke()
+            results = get_output(interpreter, top_k=3, score_threshold=0)
+            inference_ms = (time.time() - start_ms) * 1000.0
+
+            # Calculate FPS
+            fps.append(time.time())
+            fps_ms = len(fps) / (fps[-1] - fps[0])
+
+            # Display results
+            print('Inference: {:.2f}ms FPS: {:.1f}'.format(inference_ms, fps_ms))
+            for result in results:
+                print('{:.0f}% {}'.format(100 * result[1], labels[result[0]]))
+
+    finally:
+        picam2.stop()
 
 if __name__ == '__main__':
     main()
