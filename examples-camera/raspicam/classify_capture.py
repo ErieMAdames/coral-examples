@@ -1,18 +1,3 @@
-# Copyright 2019 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     https://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""A demo to classify Raspberry Pi camera stream using picamera2 and OpenCV."""
 import argparse
 import collections
 from collections import deque
@@ -38,18 +23,22 @@ def get_output(interpreter, top_k, score_threshold):
     return sorted(categories, key=operator.itemgetter(1), reverse=True)
 
 def draw_results(image, results, labels, fps, inference_ms):
-    """Draw inference results and FPS on the image."""
+    """Draw inference results, bounding boxes, and FPS on the image."""
+    # Flip the image vertically
+    image = cv2.flip(image, 0)
+
     # Draw FPS and inference time
     cv2.putText(image, f'FPS: {fps:.1f}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
     cv2.putText(image, f'Inference: {inference_ms:.2f}ms', (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-    # Draw the top-3 inference results
-    y_pos = 90
+    # Draw bounding boxes and labels
     for result in results:
         label = labels[result.id]
         score = result.score
-        cv2.putText(image, f'{label}: {100*score:.0f}%', (10, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
-        y_pos += 30
+        # Assuming result.bbox is in (xmin, ymin, xmax, ymax) format
+        xmin, ymin, xmax, ymax = result.bbox
+        cv2.rectangle(image, (xmin, ymin), (xmax, ymax), (255, 0, 0), 2)
+        cv2.putText(image, f'{label}: {100*score:.0f}%', (xmin, ymin - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
 
     return image
 
