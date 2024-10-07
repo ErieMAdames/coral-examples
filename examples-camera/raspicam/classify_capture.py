@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""A demo to classify Raspberry Pi camera stream using picamera2."""
+"""A demo to classify Raspberry Pi camera stream using picamera2 and OpenCV."""
 import argparse
 import collections
 from collections import deque
@@ -24,7 +24,6 @@ import tflite_runtime.interpreter as tflite
 import time
 from picamera2 import Picamera2
 import cv2
-
 
 Category = collections.namedtuple('Category', ['id', 'score'])
 
@@ -38,13 +37,29 @@ def get_output(interpreter, top_k, score_threshold):
     ]
     return sorted(categories, key=operator.itemgetter(1), reverse=True)
 
+def draw_results(image, results, labels, fps, inference_ms):
+    """Draw inference results and FPS on the image."""
+    # Draw FPS and inference time
+    cv2.putText(image, f'FPS: {fps:.1f}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    cv2.putText(image, f'Inference: {inference_ms:.2f}ms', (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+    # Draw the top-3 inference results
+    y_pos = 90
+    for result in results:
+        label = labels[result.id]
+        score = result.score
+        cv2.putText(image, f'{label}: {100*score:.0f}%', (10, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+        y_pos += 30
+
+    return image
+
 def main():
     default_model_dir = '../all_models'
     default_model = 'mobilenet_v2_1.0_224_quant_edgetpu.tflite'
     default_labels = 'imagenet_labels.txt'
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', help='.tflite model path',
-                        default=os.path.join(default_model_dir,default_model))
+                        default=os.path.join(default_model_dir, default_model))
     parser.add_argument('--labels', help='label file path',
                         default=os.path.join(default_model_dir, default_labels))
     args = parser.parse_args()
@@ -90,13 +105,19 @@ def main():
             fps.append(time.time())
             fps_ms = len(fps) / (fps[-1] - fps[0])
 
-            # Display results
-            print('Inference: {:.2f}ms FPS: {:.1f}'.format(inference_ms, fps_ms))
-            for result in results:
-                print('{:.0f}% {}'.format(100 * result[1], labels[result[0]]))
+            # Draw results on the image
+            annotated_image = draw_results(image, results, labels, fps_ms, inference_ms)
+
+            # Display the image with annotations
+            cv2.imshow("Inference Results", annotated_image)
+
+            # Exit the loop if 'q' is pressed
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
     finally:
         picam2.stop()
+        cv2.destroyAllWindows()
 
 if __name__ == '__main__':
     main()
