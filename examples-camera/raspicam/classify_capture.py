@@ -23,6 +23,8 @@ import os
 import tflite_runtime.interpreter as tflite
 import time
 from picamera2 import Picamera2
+import cv2
+
 
 Category = collections.namedtuple('Category', ['id', 'score'])
 
