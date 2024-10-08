@@ -27,35 +27,33 @@ import cv2
 
 Category = collections.namedtuple('Category', ['id', 'score'])
 
-def get_output(interpreter, top_k, score_threshold):
-    """Returns no more than top_k categories with score >= score_threshold."""
+def get_output(interpreter, top_k=1, score_threshold=0):
+    """Returns only the top category with the highest score >= score_threshold."""
     scores = common.output_tensor(interpreter, 0)
     categories = [
         Category(i, scores[i])
         for i in np.argpartition(scores, -top_k)[-top_k:]
         if scores[i] >= score_threshold
     ]
-    return sorted(categories, key=operator.itemgetter(1), reverse=True)
+    return sorted(categories, key=operator.itemgetter(1), reverse=True)[:1]
 
-def draw_results(image, results, labels, fps, inference_ms):
-    """Draw inference results, FPS, and bounding box on the image."""
+def draw_results(image, result, labels, fps, inference_ms):
+    """Draw inference result, FPS, and bounding box on the image."""
     # Draw FPS and inference time
     cv2.putText(image, f'FPS: {fps:.1f}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
     cv2.putText(image, f'Inference: {inference_ms:.2f}ms', (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-    # Draw the top-3 inference results
-    y_pos = 90
-    for result in results:
-        label = labels[result.id]
-        score = result.score
-        cv2.putText(image, f'{label}: {100*score:.0f}%', (10, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
-        y_pos += 30
+    # Draw the highest confidence inference result
+    if result:
+        label = labels[result[0].id]
+        score = result[0].score
+        cv2.putText(image, f'{label}: {100*score:.0f}%', (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
 
-    # Draw a bounding box (static box in the center of the image for demo purposes)
-    height, width, _ = image.shape
-    start_point = (int(width * 0.3), int(height * 0.3))  # Example top-left corner
-    end_point = (int(width * 0.7), int(height * 0.7))    # Example bottom-right corner
-    cv2.rectangle(image, start_point, end_point, (255, 0, 0), 2)  # Draw blue bounding box
+        # Draw a bounding box (static box in the center of the image for demo purposes)
+        height, width, _ = image.shape
+        start_point = (int(width * 0.3), int(height * 0.3))  # Example top-left corner
+        end_point = (int(width * 0.7), int(height * 0.7))    # Example bottom-right corner
+        cv2.rectangle(image, start_point, end_point, (255, 0, 0), 2)  # Draw blue bounding box
 
     return image
 
@@ -79,7 +77,7 @@ def main():
 
     picam2 = Picamera2()
     # Set the configuration for camera preview at 640x480 resolution
-    config = picam2.create_preview_configuration(main={"format": "RGB888", "size": (640, 480)})
+    config = picam2.create_preview_configuration(main={"format": "RGB888", "size": (1280, 960)})
     picam2.configure(config)
 
     width, height, _ = common.input_image_size(interpreter)
@@ -107,7 +105,7 @@ def main():
             # Run inference
             start_ms = time.time()
             interpreter.invoke()
-            results = get_output(interpreter, top_k=3, score_threshold=0)
+            result = get_output(interpreter, top_k=1, score_threshold=0)
             inference_ms = (time.time() - start_ms) * 1000.0
 
             # Calculate FPS
@@ -115,7 +113,7 @@ def main():
             fps_ms = len(fps) / (fps[-1] - fps[0])
 
             # Draw results on the image (including FPS, inference time, and bounding box)
-            annotated_image = draw_results(image, results, labels, fps_ms, inference_ms)
+            annotated_image = draw_results(image, result, labels, fps_ms, inference_ms)
 
             # Display the image with annotations
             cv2.imshow("Inference Results", annotated_image)
